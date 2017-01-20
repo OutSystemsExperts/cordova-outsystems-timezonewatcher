@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='utf-8'?>
+<plugin id="cordova.outsystems.timezonewatcher" version="1.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+    <name>TimezoneWatcher</name>
+    <js-module name="TimezoneWatcher" src="www/TimezoneWatcher.js">
+        <clobbers target="cordova.plugins.TimezoneWatcher" />
+    </js-module>
+
+    <platform name="ios">
+
+        <dependency id="com.chuckytuh.cordova.rsswizzle" url="https://github.com/Chuckytuh/cordova-plugin-rsswizle" />
+
+        <config-file target="*-Info.plist" parent="UIBackgroundModes">
+            <array>
+                <string>fetch</string>
+            </array>
+        </config-file>
+        <config-file parent="/*" target="config.xml">
+            <feature name="TimezoneWatcher">
+                <param name="onload" value="true" />
+                <param name="ios-package" value="TimezoneWatcher" />
+            </feature>
+        </config-file>
+        <header-file src="src/ios/TimezoneWatcher.h" />
+        <source-file src="src/ios/TimezoneWatcher.m" />
+    </platform>
+</plugin>
