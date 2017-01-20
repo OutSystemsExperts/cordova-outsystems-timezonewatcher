@@ -20,6 +20,9 @@
                 <param name="ios-package" value="TimezoneWatcher" />
             </feature>
         </config-file>
+        
+        <framework src="UserNotifications.framework" weak="true" />
+        
         <header-file src="src/ios/TimezoneWatcher.h" />
         <source-file src="src/ios/TimezoneWatcher.m" />
     </platform>
