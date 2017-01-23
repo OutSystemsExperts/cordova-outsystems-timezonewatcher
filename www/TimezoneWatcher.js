@@ -12,7 +12,7 @@ function start(title, body) {
     // Create native<->js channel for timezone-change events
     exec(function (timezone) {
         var id = setTimeout(function(){
-            cordova.fireDocumentEvent(TIMEZONE_CHANGED, timezone);
+            cordova.fireDocumentEvent(TIMEZONE_CHANGED, {"timezone" : timezone});
         }, 100);
     }, function () {
 
