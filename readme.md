@@ -4,11 +4,11 @@ Adds the ability to watch for the system timezone changes on all application sta
 
 ## Supported Platforms
 
+- Android
 - iOS
 
 ## TODO
 
-- Add Android support
 - Add documentation
 
 ---
