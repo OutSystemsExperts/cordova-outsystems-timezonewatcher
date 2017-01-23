@@ -20,6 +20,9 @@ function start(title, body) {
 }
 
 function getBackgroundRefreshStatus(success, fail)  {
+    if(cordova.platformId === "android") {
+        success("authorized");
+    }
     if (success === undefined || fail === undefined) {
         throw new Error("No " + success === undefined ? "success" : "fail" + " callback was provided");
     }

@@ -4,12 +4,9 @@
     <js-module name="TimezoneWatcher" src="www/TimezoneWatcher.js">
         <clobbers target="cordova.plugins.TimezoneWatcher" />
     </js-module>
-
     <platform name="ios">
-
         <dependency id="com.chuckytuh.cordova.rsswizzle" url="https://github.com/Chuckytuh/cordova-plugin-rsswizle" />
-
-        <config-file target="*-Info.plist" parent="UIBackgroundModes">
+        <config-file parent="UIBackgroundModes" target="*-Info.plist">
             <array>
                 <string>fetch</string>
             </array>
@@ -20,10 +17,25 @@
                 <param name="ios-package" value="TimezoneWatcher" />
             </feature>
         </config-file>
-        
         <framework src="UserNotifications.framework" weak="true" />
-        
         <header-file src="src/ios/TimezoneWatcher.h" />
         <source-file src="src/ios/TimezoneWatcher.m" />
+    </platform>
+    <platform name="android">
+        <config-file parent="/*" target="res/xml/config.xml">
+            <feature name="TimezoneWatcher">
+                <param name="onload" value="true" />
+                <param name="android-package" value="cordova.outsystems.timezonewatcher.TimezoneWatcher" />
+            </feature>
+        </config-file>
+        <config-file target="AndroidManifest.xml" parent="/manifest/application">
+            <receiver android:name="cordova.outsystems.timezonewatcher.TWBroadcastReceiver" android:enabled="true">
+                <intent-filter>
+                    <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                </intent-filter>
+            </receiver>
+        </config-file>
+        <source-file src="src/android/TimezoneWatcher.java" target-dir="src/cordova/outsystems/timezonewatcher" />
+        <source-file src="src/android/TWBroadcastReceiver.java" target-dir="src/cordova/outsystems/timezonewatcher" />
     </platform>
 </plugin>
