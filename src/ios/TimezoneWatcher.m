@@ -4,7 +4,6 @@
 #import <objc/runtime.h>
 #import <UserNotifications/UserNotifications.h>
 
-
 static NSString* const kOSTimezonePrefKey = @"com.outsystems.timezone.key";
 static NSString* const kOSOptionsNotificationTitle = @"com.outsystems.notification.title";
 static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notification.body";
@@ -19,6 +18,8 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 @property (nonatomic, strong) NSString* notificationTitle;
 @property (nonatomic, strong) NSString* notificationBody;
 
+@property (nonatomic) CLLocationManager *clLocationManager;
+
 @end
 
 @implementation TimezoneWatcher
@@ -26,6 +27,15 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 #pragma mark Life Cycle
 
 -(void) pluginInitialize {
+    
+    if(_clLocationManager == nil) {
+        _clLocationManager = [[CLLocationManager alloc] init];
+        _clLocationManager.pausesLocationUpdatesAutomatically = NO;
+        _clLocationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers;
+        _clLocationManager.distanceFilter = kCLDistanceFilterNone;
+//        _clLocationManager.delegate = self;
+        [_clLocationManager requestAlwaysAuthorization];
+    }
     
     self.notificationTitle = [self getSavedNotificationTitle];
     self.notificationBody = [self getSavedNotificationBody];
@@ -72,6 +82,8 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  * OnResume is only called when application is background and comes to foreground.
  */
 -(void) onResume {
+    [self stopMonitoringSignificantLocationChanges];
+
     [self fireTimezoneChangedEvent];
 }
 
@@ -93,6 +105,31 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 
 -(void) UIApplicationSignificantTimeChangeNotificationHandler {
     [self handleEventualTimezoneChange:nil];
+}
+
+-(void) applicationDidFinishLaunching: (NSNotification*) notification {
+    // Application launched due to Location Change notification?
+    BOOL isFromLocationChangedNotification = NO;
+    NSDictionary *userInfo = notification.userInfo;
+    if ([[userInfo allKeys] containsObject:UIApplicationLaunchOptionsLocationKey]) {
+        isFromLocationChangedNotification = YES;
+    }
+    
+    NSDictionary *appInfo = [[NSBundle mainBundle] infoDictionary];
+    NSArray *backgroundModes = appInfo[@"UIBackgroundModes"];
+    isFromLocationChangedNotification &= [backgroundModes containsObject:@"location"];
+    if(isFromLocationChangedNotification) {
+        NSLog(@"Application launched due to location changed notification.");
+        
+//        [_clLocationManager startMonitoringSignificantLocationChanges];
+        [self handleEventualTimezoneChange:nil];
+//        [self scheduleLocalNotification];
+    }
+    
+}
+
+-(void) applicationDidEnterBackground: (NSNotification*) notification {
+    [self startMonitoringSignificantLocationChanges];
 }
 
 /**
@@ -157,6 +194,7 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  * - Timezone changed; Application in foreground -> Notify to javascript
  */
 -(void) handleEventualTimezoneChange:(CompletionHandlerBlock) completionHandler {
+    NSLog(@"Checking if timezone has changed.");
     UIApplicationState state = [UIApplication sharedApplication].applicationState;
     BOOL timezoneChanged = [self hasTimezoneChanged];
     
@@ -219,9 +257,15 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
                                                object:nil];
     
     [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(didReceiveLocalNotification:)
-                                                 name:CDVLocalNotification
+                                             selector:@selector(applicationDidFinishLaunching:)
+                                                 name:UIApplicationDidFinishLaunchingNotification
                                                object:nil];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationDidEnterBackground:)
+                                                 name:UIApplicationDidEnterBackgroundNotification
+                                               object:nil];
+    
     
     [self registerForRemoteNotifications];
 }
@@ -231,7 +275,8 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     [[NSNotificationCenter defaultCenter] removeObserver:self name:NSSystemTimeZoneDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"BackgroundFetch" object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillEnterForegroundNotification object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:CDVLocalNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidFinishLaunchingNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidEnterBackgroundNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
@@ -313,6 +358,7 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  */
 - (void) scheduleLocalNotification {
     [self.commandDelegate runInBackground:^{
+        NSLog(@"Schedule a local notification");
         if(SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(@"10.0")){
             
             UNMutableNotificationContent* content = [[UNMutableNotificationContent alloc] init];
@@ -350,7 +396,7 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 - (void)registerForRemoteNotifications {
     if(SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(@"10.0")){
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-        center.delegate = self;
+//        center.delegate = self;
         [center requestAuthorizationWithOptions:(UNAuthorizationOptionSound | UNAuthorizationOptionAlert | UNAuthorizationOptionBadge) completionHandler:^(BOOL granted, NSError * _Nullable error){
             if(!error){
                 //[[UIApplication sharedApplication] registerForRemoteNotifications];
@@ -393,6 +439,11 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 
 #pragma mark Utilities
 
+/**
+ *
+ * Fetch the state of Background Refresh on the device
+ *
+ */
 - (void) getBackgroundRefreshStatus: (CDVInvokedUrlCommand*)command
 {
     NSString* status;
@@ -413,6 +464,17 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     
 }
 
+/**
+ *
+ * Fetch the state of Location Services on the device
+ *
+ */
+- (void) getLocationServiceStatus: (CDVInvokedUrlCommand*) command {
+    CDVPluginResult* result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:[CLLocationManager locationServicesEnabled]];
+    [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
+}
+
+
 -(NSString*) getSavedNotificationTitle {
     NSUserDefaults* prefs = [NSUserDefaults standardUserDefaults];
     return [prefs stringForKey:kOSOptionsNotificationTitle];
@@ -431,6 +493,52 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 -(void) setSavedNotificationBody:(NSString*) body {
     NSUserDefaults* prefs = [NSUserDefaults standardUserDefaults];
     [prefs setObject:body forKey:kOSOptionsNotificationBody];
+}
+
+#pragma mark Location
+
+
+- (void)startMonitoringSignificantLocationChanges {
+    if ([CLLocationManager significantLocationChangeMonitoringAvailable] &&
+        [self authorizedToAccessLocationServices])
+    {
+        NSLog(@"Start monitoring significant location changes.");
+        [self.clLocationManager startMonitoringSignificantLocationChanges];
+    }
+}
+
+- (void)stopMonitoringSignificantLocationChanges {
+    if ([CLLocationManager significantLocationChangeMonitoringAvailable] &&
+        [self authorizedToAccessLocationServices])
+    {
+        NSLog(@"Stop monitoring significant location changes.");
+        [self.clLocationManager stopMonitoringSignificantLocationChanges];
+    }
+}
+
+- (BOOL)authorizedToAccessLocationServices {
+    NSString *errorMessage = nil;
+    
+    if ([CLLocationManager locationServicesEnabled] == NO) {
+        errorMessage = NSLocalizedString(@"Location Services is disabled. Enable it from Settings app to retrieve your location.", nil);
+    }
+    else if ([CLLocationManager authorizationStatus] == kCLAuthorizationStatusDenied) {
+        errorMessage = NSLocalizedString(@"Access to Location Services for this app is denied. Authorize this app from Settings app to retrieve your location.", nil);
+    }
+    else if ([CLLocationManager authorizationStatus] == kCLAuthorizationStatusRestricted) {
+        errorMessage = NSLocalizedString(@"Access to Location Services for this app is restricted. Remove parental control from General > Restrictions view in Settings app.", nil);
+    }
+    
+    if (errorMessage) {
+        NSLog(@"%@", errorMessage);
+        return NO;
+    }
+    
+    return YES;
+}
+
+-(void) locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
+    NSLog(@"Did update locations!");
 }
 
 @end
