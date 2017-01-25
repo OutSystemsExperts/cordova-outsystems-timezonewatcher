@@ -11,9 +11,9 @@ var BACKGROUND_REFRESH_STATUS = {
 function start(title, body) {
     // Create native<->js channel for timezone-change events
     exec(function (timezone) {
-        var id = setTimeout(function(){
-            cordova.fireDocumentEvent(TIMEZONE_CHANGED, {"timezone" : timezone});
-        }, 100);
+        cordova.fireDocumentEvent(TIMEZONE_CHANGED, {
+            "timezone": timezone
+        });
     }, function () {
 
     }, "TimezoneWatcher", "deviceReady", [title, body]);
@@ -28,6 +28,17 @@ function getBackgroundRefreshStatus(success, fail)  {
     }
 
     exec(success, fail, "TimezoneWatcher", "getBackgroundRefreshStatus", []);
+}
+
+function getLocationServiceStatus(success, fail) {
+    if (cordova.platformId === "android") {
+        fail("Not implemented.");
+    }
+    if (success === undefined || fail === undefined) {
+        throw new Error("No " + success === undefined ? "success" : "fail" + " callback was provided");
+    }
+
+    exec(success, fail, "TimezoneWatcher", "getLocationServiceStatus", []);
 }
 
 module.exports = {
