@@ -9,7 +9,6 @@
         <config-file parent="UIBackgroundModes" target="*-Info.plist">
             <array>
                 <string>fetch</string>
-                <string>location</string>
             </array>
         </config-file>
         <config-file parent="/*" target="config.xml">

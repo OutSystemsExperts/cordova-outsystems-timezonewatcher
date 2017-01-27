@@ -19,8 +19,6 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
 @property (nonatomic, strong) NSString* notificationTitle;
 @property (nonatomic, strong) NSString* notificationBody;
 
-@property (nonatomic) CLLocationManager *clLocationManager;
-
 @end
 
 @implementation TimezoneWatcher
@@ -55,14 +53,6 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
  Cordova exposed method executed from Javascript when cordova's deviceready event is dispatched
  */
 -(void) deviceReady:(CDVInvokedUrlCommand*)command {
-    if(_clLocationManager == nil) {
-        _clLocationManager = [[CLLocationManager alloc] init];
-        _clLocationManager.pausesLocationUpdatesAutomatically = NO;
-        _clLocationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers;
-        _clLocationManager.distanceFilter = kCLDistanceFilterNone;
-        [_clLocationManager requestAlwaysAuthorization];
-    }
-    
     self.deviceReady = YES;
     NSString* title = [command argumentAtIndex:0];
     NSString* body = [command argumentAtIndex:1];
@@ -85,7 +75,6 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
  * OnResume is only called when application is background and comes to foreground.
  */
 -(void) onResume {
-    [self stopMonitoringSignificantLocationChanges];
     if(self.deviceReady) {
         [self fireTimezoneChangedEvent];
     }
@@ -119,31 +108,12 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
     
     if ([[userInfo allKeys] containsObject:UIApplicationLaunchOptionsLocalNotificationKey]) {
         [self handleApplicationFromNotification:userInfo];
-    } else {
-        // Application launched due to Location Change notification?
-        BOOL isFromLocationChangedNotification = NO;
-        
-        if ([[userInfo allKeys] containsObject:UIApplicationLaunchOptionsLocationKey]) {
-            isFromLocationChangedNotification = YES;
-        }
-        
-        NSDictionary *appInfo = [[NSBundle mainBundle] infoDictionary];
-        NSArray *backgroundModes = appInfo[@"UIBackgroundModes"];
-        isFromLocationChangedNotification &= [backgroundModes containsObject:@"location"];
-        if(isFromLocationChangedNotification) {
-            if([self hasTimezoneChanged]) {
-                [self scheduleLocalNotification];
-            }
-        }
-    }
-    
-    
+    } 
 }
 
 
 
 -(void) applicationDidEnterBackground: (NSNotification*) notification {
-    [self startMonitoringSignificantLocationChanges];
 }
 
 -(void) applicationWillEnterForeground: (NSNotification*) notification {
@@ -465,17 +435,6 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
     
 }
 
-/**
- *
- * Fetch the state of Location Services on the device
- *
- */
-- (void) getLocationServiceStatus: (CDVInvokedUrlCommand*) command {
-    CDVPluginResult* result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:[CLLocationManager locationServicesEnabled]];
-    [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
-}
-
-
 -(NSString*) getSavedNotificationTitle {
     NSUserDefaults* prefs = [NSUserDefaults standardUserDefaults];
     return [prefs stringForKey:kOSOptionsNotificationTitle];
@@ -494,50 +453,6 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
 -(void) setSavedNotificationBody:(NSString*) body {
     NSUserDefaults* prefs = [NSUserDefaults standardUserDefaults];
     [prefs setObject:body forKey:kOSOptionsNotificationBody];
-}
-
-#pragma mark Location
-
-
-- (void)startMonitoringSignificantLocationChanges {
-    if ([CLLocationManager significantLocationChangeMonitoringAvailable] &&
-        [self authorizedToAccessLocationServices])
-    {
-        [self.clLocationManager startMonitoringSignificantLocationChanges];
-    }
-}
-
-- (void)stopMonitoringSignificantLocationChanges {
-    if ([CLLocationManager significantLocationChangeMonitoringAvailable] &&
-        [self authorizedToAccessLocationServices])
-    {
-        [self.clLocationManager stopMonitoringSignificantLocationChanges];
-    }
-}
-
-- (BOOL)authorizedToAccessLocationServices {
-    NSString *errorMessage = nil;
-    
-    if ([CLLocationManager locationServicesEnabled] == NO) {
-        errorMessage = NSLocalizedString(@"Location Services is disabled. Enable it from Settings app to retrieve your location.", nil);
-    }
-    else if ([CLLocationManager authorizationStatus] == kCLAuthorizationStatusDenied) {
-        errorMessage = NSLocalizedString(@"Access to Location Services for this app is denied. Authorize this app from Settings app to retrieve your location.", nil);
-    }
-    else if ([CLLocationManager authorizationStatus] == kCLAuthorizationStatusRestricted) {
-        errorMessage = NSLocalizedString(@"Access to Location Services for this app is restricted. Remove parental control from General > Restrictions view in Settings app.", nil);
-    }
-    
-    if (errorMessage) {
-        NSLog(@"%@", errorMessage);
-        return NO;
-    }
-    
-    return YES;
-}
-
--(void) locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
-    // noop
 }
 
 @end
