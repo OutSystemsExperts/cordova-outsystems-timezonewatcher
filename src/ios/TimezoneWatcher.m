@@ -7,13 +7,14 @@
 static NSString* const kOSTimezonePrefKey = @"com.outsystems.timezone.key";
 static NSString* const kOSOptionsNotificationTitle = @"com.outsystems.notification.title";
 static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notification.body";
-
+static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notification.identifier";
 #define SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
 
 @interface TimezoneWatcher()
 
 @property (nonatomic, strong) NSString* callbackId;
 @property BOOL hasEventToDeliver;
+@property BOOL deviceReady;
 
 @property (nonatomic, strong) NSString* notificationTitle;
 @property (nonatomic, strong) NSString* notificationBody;
@@ -27,16 +28,6 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 #pragma mark Life Cycle
 
 -(void) pluginInitialize {
-    
-    if(_clLocationManager == nil) {
-        _clLocationManager = [[CLLocationManager alloc] init];
-        _clLocationManager.pausesLocationUpdatesAutomatically = NO;
-        _clLocationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers;
-        _clLocationManager.distanceFilter = kCLDistanceFilterNone;
-//        _clLocationManager.delegate = self;
-        [_clLocationManager requestAlwaysAuthorization];
-    }
-    
     self.notificationTitle = [self getSavedNotificationTitle];
     self.notificationBody = [self getSavedNotificationBody];
     
@@ -47,8 +38,12 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
         self.notificationBody = @"System timezone has changed.";
     }
     
-    self.hasEventToDeliver = NO;
-    [self handleEventualTimezoneChange:nil];
+    //    self.hasEventToDeliver = NO;
+    self.deviceReady = NO;
+    if(self.hasEventToDeliver == NO) {
+        self.hasEventToDeliver = [self hasTimezoneChanged];
+    }
+    
     [self setupUIApplicationDelegate];
     
     // Enable background fetch
@@ -60,7 +55,15 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  Cordova exposed method executed from Javascript when cordova's deviceready event is dispatched
  */
 -(void) deviceReady:(CDVInvokedUrlCommand*)command {
+    if(_clLocationManager == nil) {
+        _clLocationManager = [[CLLocationManager alloc] init];
+        _clLocationManager.pausesLocationUpdatesAutomatically = NO;
+        _clLocationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers;
+        _clLocationManager.distanceFilter = kCLDistanceFilterNone;
+        [_clLocationManager requestAlwaysAuthorization];
+    }
     
+    self.deviceReady = YES;
     NSString* title = [command argumentAtIndex:0];
     NSString* body = [command argumentAtIndex:1];
     
@@ -83,53 +86,83 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  */
 -(void) onResume {
     [self stopMonitoringSignificantLocationChanges];
-
-    [self fireTimezoneChangedEvent];
+    if(self.deviceReady) {
+        [self fireTimezoneChangedEvent];
+    }
 }
 
 /**
  * Handler for backgroundFetch execution
  */
 -(void) handleBackgroundFetch:(NSNotification*) notification {
-    // Although on a Background Fetch the application is launched and
-    // we go through pluginInitialize, we still call handleTimezoneChange with the completion handler
-    // This way we leave it to call the completionHandler as it should but it won't
-    // launch another notification. See code for handleTimezoneChange for details.
     CompletionHandlerBlock completionHandler = notification.object;
-    [self handleEventualTimezoneChange:completionHandler];
+    if([self hasTimezoneChanged]) {
+        [self scheduleLocalNotification];
+    }
+    completionHandler(UIBackgroundFetchResultNewData);
 }
 
 -(void) NSSystemTimeZoneDidChangeNotificationHandler {
-    [self handleEventualTimezoneChange:nil];
+    if([self hasTimezoneChanged]) {
+        self.hasEventToDeliver = true;
+    }
 }
 
 -(void) UIApplicationSignificantTimeChangeNotificationHandler {
-    [self handleEventualTimezoneChange:nil];
+    if([self hasTimezoneChanged]) {
+        self.hasEventToDeliver = true;
+    }
 }
 
 -(void) applicationDidFinishLaunching: (NSNotification*) notification {
-    // Application launched due to Location Change notification?
-    BOOL isFromLocationChangedNotification = NO;
     NSDictionary *userInfo = notification.userInfo;
-    if ([[userInfo allKeys] containsObject:UIApplicationLaunchOptionsLocationKey]) {
-        isFromLocationChangedNotification = YES;
+    
+    if ([[userInfo allKeys] containsObject:UIApplicationLaunchOptionsLocalNotificationKey]) {
+        [self handleApplicationFromNotification:userInfo];
+    } else {
+        // Application launched due to Location Change notification?
+        BOOL isFromLocationChangedNotification = NO;
+        
+        if ([[userInfo allKeys] containsObject:UIApplicationLaunchOptionsLocationKey]) {
+            isFromLocationChangedNotification = YES;
+        }
+        
+        NSDictionary *appInfo = [[NSBundle mainBundle] infoDictionary];
+        NSArray *backgroundModes = appInfo[@"UIBackgroundModes"];
+        isFromLocationChangedNotification &= [backgroundModes containsObject:@"location"];
+        if(isFromLocationChangedNotification) {
+            if([self hasTimezoneChanged]) {
+                [self scheduleLocalNotification];
+            }
+        }
     }
     
-    NSDictionary *appInfo = [[NSBundle mainBundle] infoDictionary];
-    NSArray *backgroundModes = appInfo[@"UIBackgroundModes"];
-    isFromLocationChangedNotification &= [backgroundModes containsObject:@"location"];
-    if(isFromLocationChangedNotification) {
-        NSLog(@"Application launched due to location changed notification.");
-        
-//        [_clLocationManager startMonitoringSignificantLocationChanges];
-        [self handleEventualTimezoneChange:nil];
-//        [self scheduleLocalNotification];
-    }
     
 }
 
+
+
 -(void) applicationDidEnterBackground: (NSNotification*) notification {
     [self startMonitoringSignificantLocationChanges];
+}
+
+-(void) applicationWillEnterForeground: (NSNotification*) notification {
+    // Clear notifications
+    if(SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(@"10.0")){
+        UNUserNotificationCenter* center = [UNUserNotificationCenter currentNotificationCenter];
+        [center removeDeliveredNotificationsWithIdentifiers:@[kOSOptionsNotificationIdentifier]];
+    } else {
+        NSArray* notifications = [[UIApplication sharedApplication] scheduledLocalNotifications];
+        for(int i=0; i < notifications.count; i++) {
+            UILocalNotification* localNotification = [notifications objectAtIndex:i];
+            NSDictionary* userInfo = [localNotification userInfo];
+            NSString* notificationId = [userInfo valueForKey:@"id"];
+            if([notificationId isEqualToString:kOSOptionsNotificationIdentifier]) {
+                [[UIApplication sharedApplication] cancelLocalNotification:localNotification];
+                break;
+            }
+        }
+    }
 }
 
 /**
@@ -173,64 +206,13 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     if(lastTimezoneName) {
         timezoneChanged = ![lastTimezoneName isEqualToString:[[NSTimeZone systemTimeZone] abbreviation]];
         if(timezoneChanged) {
-            [self saveCurrentTimezone];
         }
     } else {
         [self saveCurrentTimezone];
         timezoneChanged = NO;
     }
-    
-    return timezoneChanged;
-}
 
-/**
- * Checks if there was a change on the TimeZone if reacts as follows:
- * - Timezone changed; Application was closed; Background Fetch ran -> Show Local Notification
- * - Timezone changed; Application in background; User opened app -> Defer delivery to
- *      javascript until deviceReady method is called from javascript.
- * - Timezone changed; Application in background; Background Fetch ran -> Show Local Notification
- * - Timezone changed; Application closed; User opens app -> Defer delivery to
- *      javascript until deviceReady method is called from javascript.
- * - Timezone changed; Application in foreground -> Notify to javascript
- */
--(void) handleEventualTimezoneChange:(CompletionHandlerBlock) completionHandler {
-    NSLog(@"Checking if timezone has changed.");
-    UIApplicationState state = [UIApplication sharedApplication].applicationState;
-    BOOL timezoneChanged = [self hasTimezoneChanged];
-    
-    // App in background, show local notification
-    if(timezoneChanged) {
-        
-        if(state == UIApplicationStateBackground && completionHandler) {
-            // We got here from background fetch because its background
-            // state and completionHandler is set
-            [self scheduleLocalNotification];
-            self.hasEventToDeliver = NO;
-        } else if(state == UIApplicationStateActive) {
-            self.hasEventToDeliver = YES;
-            [self fireTimezoneChangedEvent];
-        } else  {
-            // TODO(jppg):
-            // Send to javascript if application is in foreground
-            // Perhaps should delay until "deviceready"?
-            self.hasEventToDeliver = YES;
-        }
-    }
-    
-    // When a background fetch is executed the application is activated which causes
-    // both NSSystemTimeZoneDidChangeNotificationHandler and UIApplicationSignificantTimeChangeNotificationHandler
-    // to executed before handleBackgroundFetch handler is executed, this means
-    // that the first handler sets the hasEventToDeliver flag as YES
-    if(state == UIApplicationStateBackground && completionHandler && self.hasEventToDeliver) {
-        
-        self.hasEventToDeliver = NO;
-        [self scheduleLocalNotification];
-        
-    }
-    
-    if(completionHandler) {
-        completionHandler(UIBackgroundFetchResultNewData);
-    }
+    return timezoneChanged;
 }
 
 -(void) registerObservers {
@@ -253,6 +235,11 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(onResume)
+                                                 name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationWillEnterForeground:)
                                                  name:UIApplicationWillEnterForegroundNotification
                                                object:nil];
     
@@ -267,6 +254,7 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
                                                object:nil];
     
     
+    
     [self registerForRemoteNotifications];
 }
 
@@ -274,20 +262,26 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationSignificantTimeChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:NSSystemTimeZoneDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"BackgroundFetch" object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillEnterForegroundNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidBecomeActiveNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidFinishLaunchingNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidEnterBackgroundNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillEnterForegroundNotification object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 -(void) fireTimezoneChangedEvent {
+    
+    if([[UIApplication sharedApplication] applicationState] == UIApplicationStateBackground) {
+        return;
+    }
+    
     [self.commandDelegate runInBackground:^{
-        
         CDVPluginResult* result;
         if(self.hasEventToDeliver) {
             NSString* timezoneAbbreviation = [[NSTimeZone systemTimeZone] abbreviation];
             result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:timezoneAbbreviation];
             self.hasEventToDeliver = NO;
+            [self saveCurrentTimezone];
         } else {
             result = [CDVPluginResult resultWithStatus:CDVCommandStatus_NO_RESULT];
         }
@@ -358,24 +352,24 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  */
 - (void) scheduleLocalNotification {
     [self.commandDelegate runInBackground:^{
-        NSLog(@"Schedule a local notification");
         if(SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(@"10.0")){
             
             UNMutableNotificationContent* content = [[UNMutableNotificationContent alloc] init];
             content.title = self.notificationTitle;
             content.body = self.notificationBody;
             content.sound = [UNNotificationSound defaultSound];
+            content.userInfo = @{@"timezone-changed":@"timezone-changed"};
             
             
             // Deliver the notification in five seconds.
             UNTimeIntervalNotificationTrigger* trigger = [UNTimeIntervalNotificationTrigger
                                                           triggerWithTimeInterval:5 repeats:NO];
-            UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:[[NSUUID UUID] UUIDString]
+            UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:kOSOptionsNotificationIdentifier
                                                                                   content:content trigger:trigger];
             
             // Schedule the notification.
             UNUserNotificationCenter* center = [UNUserNotificationCenter currentNotificationCenter];
-            //            center.delegate = self;
+            center.delegate = self;
             [center addNotificationRequest:request withCompletionHandler:nil];
         } else {
             
@@ -384,6 +378,8 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
             localNotification.alertBody = [NSString stringWithFormat:@"%@\n%@", self.notificationTitle, self.notificationBody];
             localNotification.fireDate = [NSDate dateWithTimeIntervalSinceNow:5];
             localNotification.repeatInterval = 0; // Do not repeat!
+            localNotification.userInfo = @{@"timezone-changed":@"timezone-changed", @"id":kOSOptionsNotificationIdentifier};
+            
             
             [[UIApplication sharedApplication] scheduleLocalNotification:localNotification];
         }
@@ -396,7 +392,7 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 - (void)registerForRemoteNotifications {
     if(SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(@"10.0")){
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-//        center.delegate = self;
+        //        center.delegate = self;
         [center requestAuthorizationWithOptions:(UNAuthorizationOptionSound | UNAuthorizationOptionAlert | UNAuthorizationOptionBadge) completionHandler:^(BOOL granted, NSError * _Nullable error){
             if(!error){
                 //[[UIApplication sharedApplication] registerForRemoteNotifications];
@@ -431,11 +427,16 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
  * Called to let your app know which action was selected by the user for a given notification.
  */
 -(void)userNotificationCenter:(UNUserNotificationCenter *)center didReceiveNotificationResponse:(UNNotificationResponse *)response withCompletionHandler:(void(^)())completionHandler{
-    
-    // Todo(jppg): Maybe we could pass timezone information to javascript?
+    [self handleApplicationFromNotification:response.notification.request.content.userInfo];
     completionHandler();
 }
 
+
+-(void) handleApplicationFromNotification: (NSDictionary*) userInfo {
+    if([userInfo objectForKey:@"timezone-changed"]) {
+        self.hasEventToDeliver = YES;
+    }
+}
 
 #pragma mark Utilities
 
@@ -502,7 +503,6 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     if ([CLLocationManager significantLocationChangeMonitoringAvailable] &&
         [self authorizedToAccessLocationServices])
     {
-        NSLog(@"Start monitoring significant location changes.");
         [self.clLocationManager startMonitoringSignificantLocationChanges];
     }
 }
@@ -511,7 +511,6 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
     if ([CLLocationManager significantLocationChangeMonitoringAvailable] &&
         [self authorizedToAccessLocationServices])
     {
-        NSLog(@"Stop monitoring significant location changes.");
         [self.clLocationManager stopMonitoringSignificantLocationChanges];
     }
 }
@@ -538,7 +537,7 @@ static NSString* const kOSOptionsNotificationBody = @"com.outsystems.notificatio
 }
 
 -(void) locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations {
-    NSLog(@"Did update locations!");
+    // noop
 }
 
 @end
