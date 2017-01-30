@@ -7,9 +7,57 @@ Adds the ability to watch for the system timezone changes on all application sta
 - Android
 - iOS
 
-## TODO
+## Installation
 
-- Add documentation
+```shell
+cordova plugin add https://github.com/OutSystemsExperts/cordova-outsystems-timezonewatcher.git
+```
+
+## API Reference
+
+Once installed, `cordova.plugins.TimezoneWatcher` is globally available and exposes the following API:
+
+| Method                      | Description |
+|-----------------------------|-------------|
+| start(title, body)          | Sets a default title and body for local notifications shown when timezone changes. Additionally, checks if any timezone change have occurred and delivers through a document event named `timezone-changed-event` |
+| getBackgroundRefreshStatus(success, fail)  | *iOS Only* retrieves the systems Refresh Status. Possible values are: <br/> `authorized` - Background updates are available for the app. <br/> `denied` - The user explicitly disabled background behavior for this app or for the whole system. <br/> `restricted` - Background updates are unavailable and the user cannot enable them again. For example, this status can occur when parental controls are in effect for the current user.|
+
+## Usage
+
+```javascript
+
+document.addEventListener("deviceready", onDeviceReady, false);
+function onDeviceReady() {
+    
+    // ...
+    
+    cordova.plugins.TimezoneWatcher.start("Timezone Info", "The timezone has changed.");
+    
+    // ...
+    cordova.plugins.TimezoneWatcher.getBackgroundRefreshStatus(function(status){
+      console.log(status);
+    }, function(error){
+      console.log(error);
+    })
+
+    // ...
+
+}
+
+```
+
+## How it works
+
+### iOS
+
+This plugin leverages two main features of the iOS system:
+
+- [UIApplicationSignificantTimeChangeNotification](https://developer.apple.com/reference/uikit/uiapplicationsignificanttimechangenotification) and  [NSSystemTimeZoneDidChangeNotification](https://developer.apple.com/reference/foundation/nssystemtimezonedidchangenotification) are responsible to delivering events to the application while in foreground informing that a timezone change has occurred.
+- [Background Fetch](https://developer.apple.com/library/content/documentation/iPhone/Conceptual/iPhoneOSProgrammingGuide/BackgroundExecution/BackgroundExecution.html) in order to periodically check for timezone changes while the application is closed. For this reason, the frequency on which this happens is out of the users and developer control.
+
+### Android
+
+A BroadcastReceiver registered to receive `android.intent.action.TIMEZONE_CHANGED` intent is responsible for delivering timezone change events to the application both in background and foreground states.
 
 ---
 

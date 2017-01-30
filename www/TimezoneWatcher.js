@@ -30,17 +30,6 @@ function getBackgroundRefreshStatus(success, fail)  {
     exec(success, fail, "TimezoneWatcher", "getBackgroundRefreshStatus", []);
 }
 
-function getLocationServiceStatus(success, fail) {
-    if (cordova.platformId === "android") {
-        fail("Not implemented.");
-    }
-    if (success === undefined || fail === undefined) {
-        throw new Error("No " + success === undefined ? "success" : "fail" + " callback was provided");
-    }
-
-    exec(success, fail, "TimezoneWatcher", "getLocationServiceStatus", []);
-}
-
 module.exports = {
     "TIMEZONE_CHANGED": TIMEZONE_CHANGED,
     "BACKGROUND_REFRESH_STATUS": BACKGROUND_REFRESH_STATUS,
