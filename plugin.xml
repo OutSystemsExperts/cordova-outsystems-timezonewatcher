@@ -5,7 +5,7 @@
         <clobbers target="cordova.plugins.TimezoneWatcher" />
     </js-module>
     <platform name="ios">
-        <dependency id="com.chuckytuh.cordova.rsswizzle" url="https://github.com/Chuckytuh/cordova-plugin-rsswizle" />
+        <!--<dependency id="com.chuckytuh.cordova.rsswizzle" url="https://github.com/Chuckytuh/cordova-plugin-rsswizle" /> -->
         <config-file parent="UIBackgroundModes" target="*-Info.plist">
             <array>
                 <string>fetch</string>
