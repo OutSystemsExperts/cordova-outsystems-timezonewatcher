@@ -8,12 +8,11 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.support.v4.app.NotificationCompat;
-
-import com.outsystems.android.WebApplicationActivity;
 
 /**
  * Created by <a href="mailto:joao.goncalves@outsystems.com">João Gonçalves</a> on 20/01/17.
@@ -66,8 +65,9 @@ public class TWBroadcastReceiver extends BroadcastReceiver {
                     builder.setContentText(TimezoneWatcher.getSavedNotificationBody(context));
                     builder.setAutoCancel(true);
 
-                    Intent resultIntent = new Intent(context, WebApplicationActivity.class)
-                            .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    PackageManager packageManager = context.getPackageManager();
+                    Intent resultIntent = packageManager.getLaunchIntentForPackage(context.getPackageName());
+                    resultIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                             .putExtra(TW_BROADCAST_EXTRA_KEY_TIMEZONE_CHANGED, true)
                             .putExtra(TW_BROADCAST_EXTRA_KEY_NOTIFICATION_ID, TW_BROADCAST_EXTRA_NOTIFICATION_ID);
 
