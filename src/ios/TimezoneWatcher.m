@@ -205,8 +205,6 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
     BOOL timezoneChanged = NO;
     if(lastTimezoneName) {
         timezoneChanged = ![lastTimezoneName isEqualToString:[[NSTimeZone systemTimeZone] abbreviation]];
-        if(timezoneChanged) {
-        }
     } else {
         [self saveCurrentTimezone];
         timezoneChanged = NO;
@@ -351,6 +349,7 @@ static NSString* const kOSOptionsNotificationIdentifier = @"com.outsystems.notif
  * Schedules a local notification
  */
 - (void) scheduleLocalNotification {
+    [self saveCurrentTimezone];
     [self.commandDelegate runInBackground:^{
         if(SYSTEM_VERSION_GRATERTHAN_OR_EQUALTO(@"10.0")){
             
