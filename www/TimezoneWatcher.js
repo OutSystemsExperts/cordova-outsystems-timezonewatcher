@@ -1,3 +1,4 @@
+cordova.define("cordova.outsystems.timezonewatcher.TimezoneWatcher", function(require, exports, module) {
 var exec = require('cordova/exec');
 var channel = require("cordova/channel");
 
@@ -19,14 +20,14 @@ function start(title, body) {
     }, "TimezoneWatcher", "deviceReady", [title, body]);
 }
 
-function getBackgroundRefreshStatus(success, fail)  {
-    if(cordova.platformId === "android") {
+function getBackgroundRefreshStatus(success, fail) {
+    if (cordova.platformId === "android") {
         success("authorized");
     }
+    
     if (success === undefined || fail === undefined) {
         throw new Error("No " + success === undefined ? "success" : "fail" + " callback was provided");
     }
-
     exec(success, fail, "TimezoneWatcher", "getBackgroundRefreshStatus", []);
 }
 
@@ -36,3 +37,4 @@ module.exports = {
     "start": start,
     "getBackgroundRefreshStatus": getBackgroundRefreshStatus,
 };
+});
