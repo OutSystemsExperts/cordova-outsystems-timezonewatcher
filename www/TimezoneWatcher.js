@@ -19,8 +19,8 @@ function start(title, body) {
     }, "TimezoneWatcher", "deviceReady", [title, body]);
 }
 
-function getBackgroundRefreshStatus(success, fail)  {
-    if(cordova.platformId === "android") {
+function getBackgroundRefreshStatus(success, fail) {
+    if (cordova.platformId === "android") {
         success("authorized");
     }
     if (success === undefined || fail === undefined) {

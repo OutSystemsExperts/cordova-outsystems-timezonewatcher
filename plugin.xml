@@ -38,5 +38,6 @@
         </config-file>
         <source-file src="src/android/TimezoneWatcher.java" target-dir="src/cordova/outsystems/timezonewatcher" />
         <source-file src="src/android/TWBroadcastReceiver.java" target-dir="src/cordova/outsystems/timezonewatcher" />
+        <framework src="src/android/timezonewatcher.gradle" custom="true" type="gradleReference" />
     </platform>
 </plugin>
